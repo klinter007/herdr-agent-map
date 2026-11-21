@@ -10,6 +10,11 @@
 // spoke and a ring spreads where it lands; when the call ends, a pulse flies back; when the
 // agent finishes its turn, a wide ring leaves it. A click shows the agent.
 //
+// The backdrop: a still sky of small dots joined by a faint web (built once per size), a few
+// that twinkle, and a soft violet band that sweeps across; a working node lights a small
+// constellation around it in the colour of its call; a call that starts draws a beam from the
+// parent and a streak from out of the map. Everything that moves for long moves natively.
+//
 // What an agent does comes from its local transcript (agents.py, every 2 s while this shows);
 // who started whom and the statuses come from Herdr. The work an agent runs out of sight (its
 // in-process subagents, background shells, Kimi agents) hangs under it as smaller nodes, from
@@ -20,7 +25,7 @@
 // It runs as a panel beside Files and Changes (props { panel: true }, a child `agentmap` of the
 // `panel-body` stack) or as a pane (pane.split { mod: "agent-map" }).
 
-import { View, div, svg, image, PathBuilder } from "gpui-kit";
+import { View, div, svg, image, PathBuilder, Background } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agents, terminals, spaces, theme, settings, exec, appHome, run, props, layout } from "herdr";
 
@@ -37,6 +42,12 @@ const ago = (s) => (s == null ? "" : s < 90 ? `${Math.max(0, Math.round(s))}s` :
 const zoomOf = (s) => (Number(s?.zoom) > 0 ? Number(s.zoom) : 1);
 const alpha = (hex, a) => `${hex.slice(0, 7)}${Math.round(Math.max(0, Math.min(1, a)) * 255).toString(16).padStart(2, "0")}`;
 const ease = (p) => 1 - (1 - p) ** 3;
+const VIOLET = "#8b7cff";   // the sweep's light
+// a gradient is a Background, which `.bg()` does not take: it is painted on a rectangle path
+const RECT = () => PathBuilder.fill().move_to("0%", "0%").line_to("100%", "0%").line_to("100%", "100%").line_to("0%", "100%").close().build();
+// a small seeded random, so the sky and the clusters stay where they are from one frame to the next
+const rng = (seed) => () => { seed = (seed + 0x6d2b79f5) | 0; let x = Math.imul(seed ^ (seed >>> 15), 1 | seed); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
+const hash = (s) => { let h = 2166136261; for (const c of String(s)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; };
 
 // props { demo: true }: a made-up team, for a picture of the mod or a look at it with no agents running.
 const DEMO = {
@@ -162,7 +173,9 @@ export default class AgentMap extends View {
       const from = a.parent && this.pos.has(a.parent) ? a.parent : "hub";
       if (!first && n?.call && n.call !== b?.call) {
         const c = COLOR[n.station] ?? COLOR.tool;
-        this.anims.push({ kind: "fly", from, to: a.address, color: c, t0: now, dur: FLY }, { kind: "ring", at: a.address, color: c, t0: now + FLY - 80, dur: RIPPLE + FLY });
+        this.anims.push({ kind: "fly", from, to: a.address, color: c, t0: now, dur: FLY }, { kind: "ring", at: a.address, color: c, t0: now + FLY - 80, dur: RIPPLE + FLY },
+          { kind: "beam", from, to: a.address, color: c, t0: now, dur: 1000 },
+          { kind: "streak", to: a.address, color: c, t0: now, dur: 650, ang: (hash(n.call) % 628) / 100 });
       } else if (!first && b?.running && n && !n.running && n.call === b.call) {
         this.anims.push({ kind: "fly", from: a.address, to: from, color: COLOR[n.station] ?? COLOR.tool, t0: now, dur: FLY });
       }
@@ -263,6 +276,23 @@ export default class AgentMap extends View {
   flight(an, now) {
     const p = (now - an.t0) / an.dur;
     if (p < 0 || p >= 1) return [];
+    const layer = (path, color) => window.paint_path(path, color).absolute().left(0).top(0).size_full();
+    if (an.kind === "beam") {   // the link lights up: a line that grows from the parent, then fades
+      const a = this.pos.get(an.from), b = this.pos.get(an.to);
+      if (!a || !b) return [];
+      const g = ease(Math.min(1, p / 0.4)), fade = p < 0.4 ? 1 : 1 - (p - 0.4) / 0.6;
+      const line = (w) => PathBuilder.stroke(w).move_to(a.x, a.y).line_to(a.x + (b.x - a.x) * g, a.y + (b.y - a.y) * g).build();
+      return [layer(line(6), alpha(an.color, 0.16 * fade)), layer(line(1.8), alpha(an.color, 0.95 * fade))];
+    }
+    if (an.kind === "streak") {   // a shooting line from out of the map onto the node, its tail fading
+      const b = this.pos.get(an.to), size = this.size;
+      if (!b || !size) return [];
+      const L = Math.max(size.width, size.height), ux = Math.cos(an.ang), uy = Math.sin(an.ang);
+      const head = L * (1 - ease(p)), fade = p > 0.8 ? (1 - p) / 0.2 : 1;
+      return [[0, 30, 0.9], [30, 80, 0.45], [80, 160, 0.15]].map(([d0, d1, o]) => layer(
+        PathBuilder.stroke(o > 0.5 ? 1.6 : 1.1).move_to(b.x + ux * (head + d0), b.y + uy * (head + d0)).line_to(b.x + ux * (head + d1), b.y + uy * (head + d1)).build(),
+        alpha(an.color, o * fade)));
+    }
     if (an.kind === "fly") {
       const a = this.pos.get(an.from), b = this.pos.get(an.to);
       if (!a || !b) return [];
@@ -278,6 +308,58 @@ export default class AgentMap extends View {
     if (p < lead) return [];
     const q = (p - lead) / (1 - lead), r = R + 4 + (an.wide ? 46 : 20) * ease(q);
     return [div().absolute().left(at.x - r).top(at.y - r).size(2 * r).rounded_full().border(an.wide ? 2 : 1.5).border_color(alpha(an.color, (1 - q) * (an.wide ? 0.6 : 0.9)))];
+  }
+
+  // The still sky, built once for a canvas size: dots, a few brighter ones, a web between neighbours.
+  sky(W, H) {
+    const key = `${Math.round(W)}x${Math.round(H)}`;
+    if (this.skyCache?.key === key) return this.skyCache;
+    const r = rng(7), n = Math.round(Math.max(50, Math.min(170, (W * H) / 2600)));
+    const pts = Array.from({ length: n }, () => ({ x: 6 + r() * (W - 12), y: 6 + r() * (H - 12), b: r() }));
+    const dot = (pb, x, y, s) => pb.add_polygon([[x - s, y], [x, y - s], [x + s, y], [x, y + s]], true);
+    let web = PathBuilder.stroke(0.6), dots = PathBuilder.fill(), lit = PathBuilder.fill(), nw = 0, nl = 0;
+    pts.forEach((p, i) => {
+      const near = pts.map((q, j) => [j, (q.x - p.x) ** 2 + (q.y - p.y) ** 2]).filter(([j, d]) => j > i && d < 80 * 80).sort((a, b) => a[1] - b[1]).slice(0, 2);
+      for (const [j] of near) { web = web.move_to(p.x, p.y).line_to(pts[j].x, pts[j].y); nw++; }
+      if (p.b > 0.9) { lit = dot(lit, p.x, p.y, 1.7); nl++; } else dots = dot(dots, p.x, p.y, p.b > 0.6 ? 1.3 : 0.9);
+    });
+    const twinkle = pts.filter((p) => p.b > 0.8 && p.b <= 0.9).slice(0, 12).map((p, k) => ({ x: p.x, y: p.y, period: 1600 + ((k * 733) % 2800) }));
+    this.skyCache = { key, web: nw ? web.build() : null, dots: dots.build(), lit: nl ? lit.build() : null, twinkle };
+    return this.skyCache;
+  }
+
+  backdrop(t, W, H) {
+    const s = this.sky(W, H), layer = (path, color) => window.paint_path(path, color).absolute().left(0).top(0).size_full();
+    const bw = Math.max(90, W * 0.34), c0 = alpha(VIOLET, 0), c1 = alpha(VIOLET, 0.075);
+    return [
+      // the sweep: a soft band of light that drifts across and back
+      div().absolute().top(0).h(H).w(bw).flex().loop("left", { from: -bw, to: W, period: 18000, easing: "ease-in-out" })
+        .child(div().relative().h_full().w(bw / 2).child(window.paint_path(RECT(), Background.linear_gradient(90, c0, c1)).absolute().left(0).top(0).size_full()))
+        .child(div().relative().h_full().w(bw / 2).child(window.paint_path(RECT(), Background.linear_gradient(90, c1, c0)).absolute().left(0).top(0).size_full())),
+      ...(s.web ? [layer(s.web, alpha(t.foreground, 0.075))] : []),
+      layer(s.dots, alpha(t.foreground, 0.22)),
+      ...(s.lit ? [layer(s.lit, alpha(t.foreground, 0.6))] : []),
+      ...s.twinkle.map((p) => div().absolute().left(p.x - 1.5).top(p.y - 1.5).size(3).rounded_full().bg(alpha(COLOR.shell, 0.9)).loop("opacity", { from: 0.05, to: 1, period: p.period })),
+    ];
+  }
+
+  // A working node's constellation: a few small rings around it, joined to it and to each other, in its call's colour.
+  cluster(a, p, color, r) {
+    const g = rng(hash(a.address)), n = a.kid ? 3 : 5, sats = [];
+    for (let k = 0; k < n; k++) {
+      const ang = (k / n) * 2 * Math.PI + g() * 0.9, d = r + 16 + g() * (a.kid ? 12 : 24);
+      sats.push({ x: p.x + d * Math.cos(ang), y: p.y + d * Math.sin(ang) });
+    }
+    let pb = PathBuilder.stroke(0.9);
+    sats.forEach((s, k) => {
+      const len = Math.hypot(s.x - p.x, s.y - p.y) || 1, ux = (s.x - p.x) / len, uy = (s.y - p.y) / len;
+      pb = pb.move_to(p.x + ux * (r + 3), p.y + uy * (r + 3)).line_to(s.x - ux * 4, s.y - uy * 4);
+      if (k % 2 === 0 && n > 2) { const q = sats[(k + 1) % n]; pb = pb.move_to(s.x, s.y).line_to(q.x, q.y); }
+    });
+    return div().absolute().left(0).top(0).size_full().loop("opacity", { from: 0.3, to: 1, period: 1600 + (hash(a.address) % 1000) })
+      .child(window.paint_path(pb.build(), alpha(color, 0.55)).absolute().left(0).top(0).size_full())
+      .children(sats.map((s) => div().absolute().left(s.x - 4).top(s.y - 4).size(8).rounded_full().border(1).border_color(alpha(color, 0.85))
+        .flex().items_center().justify_center().child(div().size(3).rounded_full().bg(color))));
   }
 
   canvas(t, list, space) {
@@ -304,8 +386,9 @@ export default class AgentMap extends View {
       const fromA = s.fromId === "hub" ? null : list.find((x) => x.address === s.fromId);
       const a0 = (!fromA || fromA === center ? HUB : this.radius(fromA)) + 5, b0 = this.radius(s.a) + 9;
       const f = this.fade(s.a);
-      const path = PathBuilder.stroke(1 + busy * 0.4 + (live ? 0.6 : 0)).move_to(s.from.x + ux * a0, s.from.y + uy * a0).line_to(s.to.x - ux * b0, s.to.y - uy * b0).build();
-      return layer(path, live ? alpha(d.color, 0.75 * f) : busy ? alpha(d.color, 0.28 * f) : f < 1 ? alpha(t.border, f) : t.border);
+      const quiet = !live && !busy;   // an idle link is a dotted thread, a live one a solid line
+      const path = (quiet ? PathBuilder.stroke(1).dash_array([2, 4]) : PathBuilder.stroke(1 + busy * 0.4 + (live ? 0.6 : 0))).move_to(s.from.x + ux * a0, s.from.y + uy * a0).line_to(s.to.x - ux * b0, s.to.y - uy * b0).build();
+      return layer(path, live ? alpha(d.color, 0.75 * f) : busy ? alpha(d.color, 0.28 * f) : alpha(t.foreground, 0.22 * f));
     });
     const hub = pos.get("hub");
     const team = list.filter((a) => !a.kid), working = team.filter((a) => a.status === "working").length;
@@ -318,7 +401,11 @@ export default class AgentMap extends View {
             .child(div().text_size(9).text_color(t.dim).child(working ? "working" : team.length === 1 ? "agent" : "agents"))))
         .child(div().mt(6).max_w(152).truncate().text_size(11.5).font_medium().text_color(t.muted).child(space?.name ?? ""));
     const now = Date.now();
-    return el.child(layer(ring.build(), alpha(t.foreground, 0.16))).children(lines).child(hubNode)
+    const clusters = list.filter((a) => a.status === "working" && pos.has(a.address)).map((a) => {
+      const d = this.doing(a, t);
+      return this.cluster(a, pos.get(a.address), d.color, a === center ? HUB : this.radius(a));
+    });
+    return el.children(this.backdrop(t, W, H)).child(layer(ring.build(), alpha(t.foreground, 0.16))).children(lines).children(clusters).child(hubNode)
       .children(list.filter((a) => a !== center && pos.has(a.address)).map((a) => this.node(a, pos.get(a.address), t)))
       .children(this.anims.flatMap((an) => this.flight(an, now)));
   }

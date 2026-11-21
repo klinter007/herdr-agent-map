@@ -8,6 +8,9 @@ A person opens it beside their work and sees every agent of the space as a node 
 
 - A header 40 px high: the space's name; at the right a small turning arc and "N working" in the theme's `working` color, and "N need you" in `blocked` when any do.
 - The map on `theme().canvas`: a dotted ellipse; a hub in the middle; one node per agent on the ellipse.
+  - The backdrop, behind everything: a still sky of 50 to 170 small dots (one per 2600 px², seeded, so it does not move between frames), each joined to its two nearest neighbours within 80 px by a 0.6 px line in `foreground` at 7.5%; one dot in ten brighter and white; up to 12 green dots that twinkle (opacity loop, 1.6 to 4.4 s). A band of violet light (`#8b7cff`, 7.5% at its middle, a third of the width) swings across and back every 18 s.
+  - A working node lights a small constellation around it in its call's colour: five (a kid: three) 8 px rings with a dot, 16 to 40 px out, joined to the node and in pairs to each other, breathing (opacity 0.3 to 1).
+  - An idle spoke is a dotted thread; a busy or live one a solid line.
   - The hub with no coordinator: a 72 px disc with the count of working agents (or of agents) and the space's name under it. With one coordinator (the only agent that started others) the hub is that agent's node, 72 px.
   - A node: a 50 px disc with the program's logo in full color (`icons/claude.svg`, `codex.svg`, `cursor.svg`, `pi.svg`, `gemini.svg`, `grok.svg`, else `icons/agent.svg`; 45% opacity when idle). A 20 px badge on its lower right corner holds the icon of the kind of work, filled with that kind's color while the call runs. Under the disc: the name (11.5 px), a row of up to 7 beads (4 px, the newest 6 px), and one line (10 px) such as "Shell · Run the cart tests", "Thinking · after …", "Needs you", "Last: …".
   - Colors by kind: files `#5aa9ff`, shell `#4cd08a`, network `#b48cff`, browser `#ff9f5a`, agents `#ffd166`, skills `#ff7ab6`, memory `#62c7ba`, you `#e8e6e1`, other `#9aa0aa`; thinking uses `theme().working`.
@@ -19,7 +22,7 @@ A person opens it beside their work and sees every agent of the space as a node 
 **How it behaves:**
 
 - working: a soft glow that breathes (opacity loop, 1500 ms) and a thin arc that turns around the disc (1300 ms; 2600 ms while thinking). blocked: a red ring that beats (900 ms) and the line "Needs you". done: the disc's edge in `theme().done`. idle: dim.
-- A call starts: four dots with a tail fly from the hub (or the parent) to the node in 750 ms, then a ring spreads there. The call ends: the dots fly back. The turn ends: a wide white ring leaves the node (1100 ms).
+- A call starts: four dots with a tail fly from the hub (or the parent) to the node in 750 ms, then a ring spreads there; the link lights up as a beam that grows from the parent in 400 ms and fades in 600 ms; a streak shoots in from out of the map onto the node (650 ms, its tail in three fading parts). The call ends: the dots fly back. The turn ends: a wide white ring leaves the node (1100 ms).
 - A click on a node or a row runs `agent.focus { terminal }`; on a kid, with the terminal of the agent it belongs to.
 - A new kid gets a pulse from its parent; a kid that ends sends the wide ring, as an agent does.
 - As a panel (`props { panel: true }`, a child `agentmap` of a `panel-body` stack) it reads transcripts only while that child shows. `props { demo: true }` shows a made-up team and reads nothing.
@@ -35,6 +38,7 @@ A person opens it beside their work and sees every agent of the space as a node 
 
 - Path coordinates follow Herdr's zoom (0.1.16): do not multiply them by the zoom. Sizes from `on_size_change` are real px: divide by the zoom.
 - `.loop` swings one property; two loops on one element do not move it along a line. That is why the pulses are drawn by the timer.
+- `.bg()` takes a colour, not a `Background`: a gradient is painted with `window.paint_path(RECT(), Background.linear_gradient(...))` (else the mod shows "unsupported argument type").
 - Agents that share a folder get that folder's newest transcripts, working agents first: a guess.
 - A parent that Herdr does not list as an agent of the space is not drawn as a coordinator.
 - Kids come only from an exact transcript (the pid's `~/.claude/sessions/<pid>.json`): a guessed one could show another session's work.
