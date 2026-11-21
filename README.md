@@ -12,11 +12,12 @@ A live map of the agents in a [Herdr](https://herdr.dev) space: who works, on wh
 - **The kind of work, by color:** files blue, shell green, network purple, browser orange, agents yellow, skills pink, memory teal. Three dots mean the agent is thinking.
 - **Motion:** a working agent has a ring that turns. When it starts a call, a pulse in that color flies out along its spoke; when the call ends, a pulse flies back; when it finishes its turn, a wide ring leaves it.
 - **History:** a row of beads under each name shows the last calls. A spoke is thicker when the agent was busier in the last five minutes.
-- **A list** under the map: one row per agent, the latest first, with its model. A click on a node or a row shows that agent.
+- **Work out of sight, under the agent that runs it:** an agent's in-process subagents (Claude Code), its background shells, and the Kimi Code and `codex exec` agents those shells start show as smaller nodes under it, each with its own kind of work, last calls and state. A Kimi or Codex agent hangs under the background shell that started it. A finished one says "Done 40s ago" and fades out over three minutes. The header counts them ("+5 in the background").
+- **A list** under the map: one row per agent, the latest first, with its model, and its background work indented under it. A click on a node or a row shows that agent (for background work: the agent it belongs to).
 
 ## Where the data comes from
 
-Statuses and who started whom come from Herdr. What an agent does comes from its local transcript, read by `agents.py` every 2 seconds while the map shows: Claude Code (`~/.claude/projects/...`) and Codex (`~/.codex/sessions/...`). Nothing leaves your computer.
+Statuses and who started whom come from Herdr. What an agent does comes from its local transcript, read by `agents.py` every 2 seconds while the map shows: Claude Code (`~/.claude/projects/...`; the exact session through `~/.claude/sessions/<pid>.json`), Codex (`~/.codex/sessions/...`) and Kimi Code (`~/.kimi-code/sessions/...`). Background work comes from the same files: subagent transcripts (`<session>/subagents/`), background Bash calls and their end notices, and Kimi and `codex exec` sessions in the agent's folder, matched to their shell through `ps`. Transcripts are read from where the last poll stopped, so a quiet space costs a few file checks. Nothing leaves your computer.
 
 ## Install
 
@@ -45,6 +46,7 @@ To keep it as a side panel, add this block to the row of your own layout that ho
 
 - Two agents in the same folder: which transcript belongs to which agent is a guess.
 - Agents other than Claude Code and Codex show their status, without the kind of work.
+- Background work shows only for a Claude Code agent whose exact session is known (Herdr gives its process). Calls to a model API from a script have no transcript: the background shell that runs them shows, not each call.
 - A coordinator sits in the middle only when Herdr lists it as an agent of the same space.
 
 ## Credit
